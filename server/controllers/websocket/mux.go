@@ -20,6 +20,7 @@ type PartitionRegistry interface {
 	Register(key string, buffer chan string)
 	Deregister(key string, buffer chan string)
 	IsKeyExists(key string) bool
+	ListKeys() []string
 }
 
 // Multiplexor is responsible for handling the data transfer between the storage layer

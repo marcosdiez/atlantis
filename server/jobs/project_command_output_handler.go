@@ -71,6 +71,9 @@ type ProjectCommandOutputHandler interface {
 
 	// Cleans up resources for a pull
 	CleanUp(pullInfo PullInfo)
+
+	// Lists existing keys
+	ListKeys() []string
 }
 
 func NewAsyncProjectCommandOutputHandler(
@@ -84,6 +87,18 @@ func NewAsyncProjectCommandOutputHandler(
 		projectOutputBuffers: map[string]OutputBuffer{},
 		pullToJobMapping:     sync.Map{},
 	}
+}
+
+func (p *AsyncProjectCommandOutputHandler) ListKeys() []string {
+	p.projectOutputBuffersLock.RLock()
+	defer p.projectOutputBuffersLock.RUnlock()
+
+	keys := make([]string, 0, len(p.projectOutputBuffers))
+	for k := range p.projectOutputBuffers {
+		keys = append(keys, k)
+	}
+
+	return keys
 }
 
 func (p *AsyncProjectCommandOutputHandler) IsKeyExists(key string) bool {
@@ -284,4 +299,8 @@ func (p *NoopProjectOutputHandler) CleanUp(pullInfo PullInfo) {
 
 func (p *NoopProjectOutputHandler) IsKeyExists(key string) bool {
 	return false
+}
+
+func (p *NoopProjectOutputHandler) ListKeys() []string {
+	return []string{}
 }
