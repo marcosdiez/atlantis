@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"sync"
+	"time"
 
 	"github.com/runatlantis/atlantis/server/events/command"
 	"github.com/runatlantis/atlantis/server/events/models"
@@ -14,10 +15,24 @@ type OutputBuffer struct {
 }
 
 type PullInfo struct {
-	PullNum     int
-	Repo        string
-	ProjectName string
-	Workspace   string
+	PullNum      int
+	Repo         string
+	RepoFullName string
+	ProjectName  string
+	Path         string
+	Workspace    string
+}
+
+type JobIDInfo struct {
+	JobID         string
+	JobIDUrl      string
+	Time          time.Time
+	TimeFormatted string
+}
+
+type PullInfoWithJobIDs struct {
+	Pull       PullInfo
+	JobIDInfos []JobIDInfo
 }
 
 type JobInfo struct {
@@ -40,7 +55,7 @@ type AsyncProjectCommandOutputHandler struct {
 	projectOutputBuffers     map[string]OutputBuffer
 	projectOutputBuffersLock sync.RWMutex
 
-	receiverBuffers     map[string]map[chan string]bool
+	receiverBuffers     map[string]map[chan string]time.Time
 	receiverBuffersLock sync.RWMutex
 
 	logger logging.SimpleLogging
@@ -71,6 +86,9 @@ type ProjectCommandOutputHandler interface {
 
 	// Cleans up resources for a pull
 	CleanUp(pullInfo PullInfo)
+
+	// Returns a map from Pull Requests to Jobs
+	GetPullToJobMapping() []PullInfoWithJobIDs
 }
 
 func NewAsyncProjectCommandOutputHandler(
@@ -80,10 +98,40 @@ func NewAsyncProjectCommandOutputHandler(
 	return &AsyncProjectCommandOutputHandler{
 		projectCmdOutput:     projectCmdOutput,
 		logger:               logger,
-		receiverBuffers:      map[string]map[chan string]bool{},
+		receiverBuffers:      map[string]map[chan string]time.Time{},
 		projectOutputBuffers: map[string]OutputBuffer{},
 		pullToJobMapping:     sync.Map{},
 	}
+}
+
+func (p *AsyncProjectCommandOutputHandler) GetPullToJobMapping() []PullInfoWithJobIDs {
+
+	pullToJobMappings := []PullInfoWithJobIDs{}
+	i := 0
+
+	p.pullToJobMapping.Range(func(key, value interface{}) bool {
+		pullInfo := key.(PullInfo)
+		jobIdMap := value.(map[string]time.Time)
+
+		p := PullInfoWithJobIDs{
+			Pull:       pullInfo,
+			JobIDInfos: make([]JobIDInfo, 0, len(jobIdMap)),
+		}
+
+		for jobId, theTime := range jobIdMap {
+			jobIdInfo := JobIDInfo{
+				JobID: jobId,
+				Time:  theTime,
+			}
+			p.JobIDInfos = append(p.JobIDInfos, jobIdInfo)
+		}
+
+		pullToJobMappings = append(pullToJobMappings, p)
+		i++
+		return true
+	})
+
+	return pullToJobMappings
 }
 
 func (p *AsyncProjectCommandOutputHandler) IsKeyExists(key string) bool {
@@ -99,10 +147,12 @@ func (p *AsyncProjectCommandOutputHandler) Send(ctx command.ProjectContext, msg 
 		JobInfo: JobInfo{
 			HeadCommit: ctx.Pull.HeadCommit,
 			PullInfo: PullInfo{
-				PullNum:     ctx.Pull.Num,
-				Repo:        ctx.BaseRepo.Name,
-				ProjectName: ctx.ProjectName,
-				Workspace:   ctx.Workspace,
+				PullNum:      ctx.Pull.Num,
+				Repo:         ctx.BaseRepo.Name,
+				RepoFullName: ctx.BaseRepo.FullName,
+				ProjectName:  ctx.ProjectName,
+				Path:         ctx.RepoRelDir,
+				Workspace:    ctx.Workspace,
 			},
 		},
 		Line:              msg,
@@ -138,11 +188,11 @@ func (p *AsyncProjectCommandOutputHandler) Handle() {
 
 		// Add job to pullToJob mapping
 		if _, ok := p.pullToJobMapping.Load(msg.JobInfo.PullInfo); !ok {
-			p.pullToJobMapping.Store(msg.JobInfo.PullInfo, map[string]bool{})
+			p.pullToJobMapping.Store(msg.JobInfo.PullInfo, map[string]time.Time{})
 		}
 		value, _ := p.pullToJobMapping.Load(msg.JobInfo.PullInfo)
-		jobMapping := value.(map[string]bool)
-		jobMapping[msg.JobID] = true
+		jobMapping := value.(map[string]time.Time)
+		jobMapping[msg.JobID] = time.Now()
 
 		// Forward new message to all receiver channels and output buffer
 		p.writeLogLine(msg.JobID, msg.Line)
@@ -191,9 +241,9 @@ func (p *AsyncProjectCommandOutputHandler) addChan(ch chan string, jobID string)
 	// to prevent new messages coming in interleaving with this backfill.
 	p.receiverBuffersLock.Lock()
 	if p.receiverBuffers[jobID] == nil {
-		p.receiverBuffers[jobID] = map[chan string]bool{}
+		p.receiverBuffers[jobID] = map[chan string]time.Time{}
 	}
-	p.receiverBuffers[jobID][ch] = true
+	p.receiverBuffers[jobID][ch] = time.Now()
 	p.receiverBuffersLock.Unlock()
 }
 
@@ -231,7 +281,7 @@ func (p *AsyncProjectCommandOutputHandler) Deregister(jobID string, ch chan stri
 	p.receiverBuffersLock.Unlock()
 }
 
-func (p *AsyncProjectCommandOutputHandler) GetReceiverBufferForPull(jobID string) map[chan string]bool {
+func (p *AsyncProjectCommandOutputHandler) GetReceiverBufferForPull(jobID string) map[chan string]time.Time {
 	return p.receiverBuffers[jobID]
 }
 
@@ -239,16 +289,16 @@ func (p *AsyncProjectCommandOutputHandler) GetProjectOutputBuffer(jobID string) 
 	return p.projectOutputBuffers[jobID]
 }
 
-func (p *AsyncProjectCommandOutputHandler) GetJobIDMapForPull(pullInfo PullInfo) map[string]bool {
+func (p *AsyncProjectCommandOutputHandler) GetJobIDMapForPull(pullInfo PullInfo) map[string]time.Time {
 	if value, ok := p.pullToJobMapping.Load(pullInfo); ok {
-		return value.(map[string]bool)
+		return value.(map[string]time.Time)
 	}
 	return nil
 }
 
 func (p *AsyncProjectCommandOutputHandler) CleanUp(pullInfo PullInfo) {
 	if value, ok := p.pullToJobMapping.Load(pullInfo); ok {
-		jobMapping := value.(map[string]bool)
+		jobMapping := value.(map[string]time.Time)
 		for jobID := range jobMapping {
 			p.projectOutputBuffersLock.Lock()
 			delete(p.projectOutputBuffers, jobID)
@@ -284,4 +334,8 @@ func (p *NoopProjectOutputHandler) CleanUp(pullInfo PullInfo) {
 
 func (p *NoopProjectOutputHandler) IsKeyExists(key string) bool {
 	return false
+}
+
+func (p *NoopProjectOutputHandler) GetPullToJobMapping() []PullInfoWithJobIDs {
+	return []PullInfoWithJobIDs{}
 }
