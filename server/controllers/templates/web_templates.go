@@ -166,18 +166,24 @@ var IndexTemplate = template.Must(template.New("index.html.tmpl").Parse(`
       <span>Repository</span>
       <span>Project</span>
       <span>Workspace</span>
+      <span>Command</span>
+      <span>Username</span>
       <span>Jobs</span>
     </div>
     {{ range .PullToJobMapping }}
       <div class="pulls-row">
-      <span class="pulls-element">{{.Pull.RepoFullName}} #{{.Pull.PullNum}}</span>
-      <span class="pulls-element"><code>{{.Pull.Path}}</code></span>
-      <span class="pulls-element"><code>{{.Pull.Workspace}}</code></span>
-      <span class="pulls-element">
-      {{ range .JobIDInfos }}
-        <div><a href="{{ $basePath }}{{ .JobIDUrl }}" target="_blank">{{ .TimeFormatted }}</a></div>
-      {{ end }}
-      </span>
+        <a href="{{.Pull.Url}}" tabindex="-1" target="_blank" class="pulls-link">
+          <span class="pulls-element">{{.Pull.RepoFullName}} #{{.Pull.PullNum}}</span>
+        </a>
+        <span class="pulls-element"><code>{{.Pull.Path}}</code></span>
+        <span class="pulls-element"><code>{{.Pull.Workspace}}</code></span>
+        <span class="pulls-element"><code>{{.Pull.CommandName}}</code></span>
+        <span class="pulls-element"><code>{{.Pull.Username}}</code></span>
+        <span class="pulls-element">
+        {{ range .JobIDInfos }}
+          <div><a href="{{ $basePath }}{{ .JobIDUrl }}" target="_blank">{{ .TimeFormatted }}</a></div>
+        {{ end }}
+        </span>
       </div>
     {{ end }}
     </div>

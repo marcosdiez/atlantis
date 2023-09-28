@@ -21,6 +21,9 @@ type PullInfo struct {
 	ProjectName  string
 	Path         string
 	Workspace    string
+	CommandName  string
+	Username     string
+	Url          string
 }
 
 type JobIDInfo struct {
@@ -153,6 +156,9 @@ func (p *AsyncProjectCommandOutputHandler) Send(ctx command.ProjectContext, msg 
 				ProjectName:  ctx.ProjectName,
 				Path:         ctx.RepoRelDir,
 				Workspace:    ctx.Workspace,
+				CommandName:  ctx.CommandName.TitleString(),
+				Username:     ctx.User.Username,
+				Url:          ctx.Pull.URL,
 			},
 		},
 		Line:              msg,

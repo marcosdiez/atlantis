@@ -303,7 +303,7 @@ tbody {
 /* Style for the Pull To Job Mapping Table */
 .pulls-grid{
   display: grid;
-  grid-template-columns: auto auto auto auto;
+  grid-template-columns: auto auto auto auto auto auto;
   border: 1px solid #dbeaf4;
   width: 100%;
   font-size: 12px;
@@ -317,6 +317,11 @@ tbody {
 .pulls-element {
   border-bottom: 1px solid #dbeaf4;
   padding: 5px;
+}
+
+.pulls-link {
+  text-decoration: none;
+  color: #555
 }
 
 /* The Modal (background) */
