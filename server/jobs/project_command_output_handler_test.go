@@ -167,6 +167,9 @@ func TestProjectCommandOutputHandler(t *testing.T) {
 			ProjectName:  ctx.ProjectName,
 			Path:         ctx.RepoRelDir,
 			Workspace:    ctx.Workspace,
+			CommandName:  ctx.CommandName.TitleString(),
+			Username:     ctx.User.Username,
+			Url:          ctx.Pull.URL,
 		}
 		wg.Wait() // Must finish reading messages before cleaning up
 		projectOutputHandler.CleanUp(pullContext)
