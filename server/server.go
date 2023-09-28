@@ -1108,8 +1108,14 @@ func preparePullToJobMappings(s *Server) []jobs.PullInfoWithJobIDs {
 		if pullToJobMappings[x].Pull.ProjectName != pullToJobMappings[y].Pull.ProjectName {
 			return pullToJobMappings[x].Pull.ProjectName < pullToJobMappings[y].Pull.ProjectName
 		}
+		if pullToJobMappings[x].Pull.CommandName != pullToJobMappings[y].Pull.CommandName {
+			return pullToJobMappings[x].Pull.CommandName < pullToJobMappings[y].Pull.CommandName
+		}
 		if pullToJobMappings[x].Pull.Path != pullToJobMappings[y].Pull.Path {
 			return pullToJobMappings[x].Pull.Path < pullToJobMappings[y].Pull.Path
+		}
+		if pullToJobMappings[x].Pull.PullNum != pullToJobMappings[y].Pull.PullNum {
+			return pullToJobMappings[x].Pull.PullNum < pullToJobMappings[y].Pull.PullNum
 		}
 		return pullToJobMappings[x].Pull.Workspace < pullToJobMappings[y].Pull.Workspace
 	})

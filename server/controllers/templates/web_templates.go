@@ -191,6 +191,9 @@ var IndexTemplate = template.Must(template.New("index.html.tmpl").Parse(`
     <p class="placeholder">No jobs found.</p>
     {{ end }}
   </section>
+  <br>
+  <br>
+  <br>
   <div id="applyLockMessageModal" class="modal">
     <!-- Modal content -->
     <div class="modal-content">
