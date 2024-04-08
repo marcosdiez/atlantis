@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/google/go-github/v54/github"
+	"github.com/google/go-github/v59/github"
 	. "github.com/petergtz/pegomock/v4"
 	"github.com/runatlantis/atlantis/server/core/db"
 	"github.com/runatlantis/atlantis/server/events"
@@ -128,9 +128,11 @@ func TestPlanCommandRunner_IsSilenced(t *testing.T) {
 				timesComment = 0
 			}
 
-			vcsClient.VerifyWasCalled(Times(timesComment)).CreateComment(Any[models.Repo](), Any[int](), Any[string](), Any[string]())
+			vcsClient.VerifyWasCalled(Times(timesComment)).CreateComment(
+				Any[logging.SimpleLogging](), Any[models.Repo](), Any[int](), Any[string](), Any[string]())
 			if c.ExpVCSStatusSet {
 				commitUpdater.VerifyWasCalledOnce().UpdateCombinedCount(
+					Any[logging.SimpleLogging](),
 					Any[models.Repo](),
 					Any[models.PullRequest](),
 					Eq[models.CommitStatus](models.SuccessCommitStatus),
@@ -140,6 +142,7 @@ func TestPlanCommandRunner_IsSilenced(t *testing.T) {
 				)
 			} else {
 				commitUpdater.VerifyWasCalled(Never()).UpdateCombinedCount(
+					Any[logging.SimpleLogging](),
 					Any[models.Repo](),
 					Any[models.PullRequest](),
 					Any[models.CommitStatus](),
@@ -192,7 +195,7 @@ func TestPlanCommandRunner_ExecutionOrder(t *testing.T) {
 				},
 				{
 					Command: command.Plan,
-					Error:   errors.New("Shabang!"),
+					Error:   errors.New("shabang"),
 				},
 			},
 			RunnerInvokeMatch: []*EqMatcher{
@@ -221,7 +224,7 @@ func TestPlanCommandRunner_ExecutionOrder(t *testing.T) {
 			ProjectResults: []command.ProjectResult{
 				{
 					Command: command.Plan,
-					Error:   errors.New("Shabang!"),
+					Error:   errors.New("shabang"),
 				},
 				{
 					Command:     command.Plan,
@@ -256,7 +259,7 @@ func TestPlanCommandRunner_ExecutionOrder(t *testing.T) {
 			ProjectResults: []command.ProjectResult{
 				{
 					Command: command.Plan,
-					Error:   errors.New("Shabang!"),
+					Error:   errors.New("shabang"),
 				},
 				{
 					Command:     command.Plan,
@@ -306,7 +309,7 @@ func TestPlanCommandRunner_ExecutionOrder(t *testing.T) {
 				},
 				{
 					Command: command.Plan,
-					Error:   errors.New("Shabang!"),
+					Error:   errors.New("shabang"),
 				},
 				{
 					Command: command.Plan,
@@ -372,7 +375,7 @@ func TestPlanCommandRunner_ExecutionOrder(t *testing.T) {
 				},
 				{
 					Command: command.Plan,
-					Error:   errors.New("Shabang!"),
+					Error:   errors.New("shabang"),
 				},
 				{
 					Command: command.Plan,
@@ -407,7 +410,7 @@ func TestPlanCommandRunner_ExecutionOrder(t *testing.T) {
 			ProjectResults: []command.ProjectResult{
 				{
 					Command: command.Plan,
-					Error:   errors.New("Shabang!"),
+					Error:   errors.New("shabang"),
 				},
 				{
 					Command: command.Plan,
@@ -438,7 +441,7 @@ func TestPlanCommandRunner_ExecutionOrder(t *testing.T) {
 			ProjectResults: []command.ProjectResult{
 				{
 					Command: command.Plan,
-					Error:   errors.New("Shabang!"),
+					Error:   errors.New("shabang"),
 				},
 				{
 					Command: command.Plan,
@@ -484,8 +487,8 @@ func TestPlanCommandRunner_ExecutionOrder(t *testing.T) {
 				Trigger:  command.CommentTrigger,
 			}
 
-			When(githubGetter.GetPullRequest(testdata.GithubRepo, testdata.Pull.Num)).ThenReturn(pull, nil)
-			When(eventParsing.ParseGithubPull(pull)).ThenReturn(modelPull, modelPull.BaseRepo, testdata.GithubRepo, nil)
+			When(githubGetter.GetPullRequest(Any[logging.SimpleLogging](), Eq(testdata.GithubRepo), Eq(testdata.Pull.Num))).ThenReturn(pull, nil)
+			When(eventParsing.ParseGithubPull(Any[logging.SimpleLogging](), Eq(pull))).ThenReturn(modelPull, modelPull.BaseRepo, testdata.GithubRepo, nil)
 
 			When(projectCommandBuilder.BuildPlanCommands(ctx, cmd)).ThenReturn(c.ProjectContexts, nil)
 			// When(projectCommandBuilder.BuildPlanCommands(ctx, cmd)).Then(func(args []Param) ReturnValues {
@@ -502,7 +505,7 @@ func TestPlanCommandRunner_ExecutionOrder(t *testing.T) {
 			}
 
 			vcsClient.VerifyWasCalledOnce().CreateComment(
-				Any[models.Repo](), Eq(modelPull.Num), Any[string](), Eq("plan"),
+				Any[logging.SimpleLogging](), Any[models.Repo](), Eq(modelPull.Num), Any[string](), Eq("plan"),
 			)
 		})
 	}
@@ -517,11 +520,12 @@ func TestPlanCommandRunner_AtlantisApplyStatus(t *testing.T) {
 		ProjectContexts        []command.ProjectContext
 		ProjectResults         []command.ProjectResult
 		PrevPlanStored         bool // stores a previous "No changes" plan in the backend
+		DoNotUpdateApply       bool // certain circumtances we want to skip the call to update apply
 		ExpVCSApplyStatusTotal int
 		ExpVCSApplyStatusSucc  int
 	}{
 		{
-			Description: "When planning with changes, set the 0/1 apply status",
+			Description: "When planning with changes, do not change the apply status",
 			ProjectContexts: []command.ProjectContext{
 				{
 					CommandName: command.Plan,
@@ -537,8 +541,7 @@ func TestPlanCommandRunner_AtlantisApplyStatus(t *testing.T) {
 					},
 				},
 			},
-			ExpVCSApplyStatusTotal: 1,
-			ExpVCSApplyStatusSucc:  0,
+			DoNotUpdateApply: true,
 		},
 		{
 			Description: "When planning with no changes, set the 1/1 apply status",
@@ -561,7 +564,7 @@ func TestPlanCommandRunner_AtlantisApplyStatus(t *testing.T) {
 			ExpVCSApplyStatusSucc:  1,
 		},
 		{
-			Description: "When planning with no changes and previous plan with no changes, set the 1/2 apply status",
+			Description: "When planning with no changes and previous plan with no changes do not set the apply status",
 			ProjectContexts: []command.ProjectContext{
 				{
 					CommandName: command.Plan,
@@ -577,9 +580,8 @@ func TestPlanCommandRunner_AtlantisApplyStatus(t *testing.T) {
 					},
 				},
 			},
-			PrevPlanStored:         true,
-			ExpVCSApplyStatusTotal: 2,
-			ExpVCSApplyStatusSucc:  1,
+			DoNotUpdateApply: true,
+			PrevPlanStored:   true,
 		},
 		{
 			Description: "When planning with no changes and previous 'No changes' plan, set the 2/2 apply status",
@@ -603,7 +605,7 @@ func TestPlanCommandRunner_AtlantisApplyStatus(t *testing.T) {
 			ExpVCSApplyStatusSucc:  2,
 		},
 		{
-			Description: "When planning again with changes following a previous 'No changes' plan, set the 0/1 apply status",
+			Description: "When planning again with changes following a previous 'No changes' plan do not set the apply status",
 			ProjectContexts: []command.ProjectContext{
 				{
 					CommandName: command.Plan,
@@ -621,12 +623,11 @@ func TestPlanCommandRunner_AtlantisApplyStatus(t *testing.T) {
 					},
 				},
 			},
-			PrevPlanStored:         true,
-			ExpVCSApplyStatusTotal: 1,
-			ExpVCSApplyStatusSucc:  0,
+			DoNotUpdateApply: true,
+			PrevPlanStored:   true,
 		},
 		{
-			Description: "When planning again with changes following a previous 'No changes' plan, while another plan with 'No changes', set the 1/2 apply status.",
+			Description: "When planning again with changes following a previous 'No changes' plan, while another plan with 'No changes' do not set the apply status.",
 			ProjectContexts: []command.ProjectContext{
 				{
 					CommandName: command.Plan,
@@ -655,9 +656,8 @@ func TestPlanCommandRunner_AtlantisApplyStatus(t *testing.T) {
 					},
 				},
 			},
-			PrevPlanStored:         true,
-			ExpVCSApplyStatusTotal: 2,
-			ExpVCSApplyStatusSucc:  1,
+			DoNotUpdateApply: true,
+			PrevPlanStored:   true,
 		},
 		{
 			Description: "When planning again with no changes following a previous 'No changes' plan, while another plan also with 'No changes', set the 2/2 apply status.",
@@ -742,21 +742,33 @@ func TestPlanCommandRunner_AtlantisApplyStatus(t *testing.T) {
 
 			planCommandRunner.Run(ctx, cmd)
 
-			vcsClient.VerifyWasCalledOnce().CreateComment(Any[models.Repo](), AnyInt(), AnyString(), AnyString())
+			vcsClient.VerifyWasCalledOnce().CreateComment(Any[logging.SimpleLogging](), Any[models.Repo](), AnyInt(), AnyString(), AnyString())
 
 			ExpCommitStatus := models.SuccessCommitStatus
 			if c.ExpVCSApplyStatusSucc != c.ExpVCSApplyStatusTotal {
 				ExpCommitStatus = models.PendingCommitStatus
 			}
-
-			commitUpdater.VerifyWasCalledOnce().UpdateCombinedCount(
-				Any[models.Repo](),
-				Any[models.PullRequest](),
-				Eq[models.CommitStatus](ExpCommitStatus),
-				Eq[command.Name](command.Apply),
-				Eq(c.ExpVCSApplyStatusSucc),
-				Eq(c.ExpVCSApplyStatusTotal),
-			)
+			if c.DoNotUpdateApply {
+				commitUpdater.VerifyWasCalled(Never()).UpdateCombinedCount(
+					Any[logging.SimpleLogging](),
+					Any[models.Repo](),
+					Any[models.PullRequest](),
+					Any[models.CommitStatus](),
+					Eq[command.Name](command.Apply),
+					AnyInt(),
+					AnyInt(),
+				)
+			} else {
+				commitUpdater.VerifyWasCalledOnce().UpdateCombinedCount(
+					Any[logging.SimpleLogging](),
+					Any[models.Repo](),
+					Any[models.PullRequest](),
+					Eq[models.CommitStatus](ExpCommitStatus),
+					Eq[command.Name](command.Apply),
+					Eq(c.ExpVCSApplyStatusSucc),
+					Eq(c.ExpVCSApplyStatusTotal),
+				)
+			}
 		})
 	}
 }

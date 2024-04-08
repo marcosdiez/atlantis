@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/hashicorp/go-version"
@@ -17,17 +16,14 @@ import (
 	"github.com/runatlantis/atlantis/server/events/command"
 	"github.com/runatlantis/atlantis/server/logging"
 	. "github.com/runatlantis/atlantis/testing"
-
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
 
 func TestConfTestVersionDownloader(t *testing.T) {
 
 	version, _ := version.NewVersion("0.25.0")
 	destPath := "some/path"
-
-	fullURL := fmt.Sprintf("https://github.com/open-policy-agent/conftest/releases/download/v0.25.0/conftest_0.25.0_%s_x86_64.tar.gz?checksum=file:https://github.com/open-policy-agent/conftest/releases/download/v0.25.0/checksums.txt", cases.Title(language.English).String(runtime.GOOS))
+	platform := getPlatform()
+	fullURL := fmt.Sprintf("https://github.com/open-policy-agent/conftest/releases/download/v0.25.0/conftest_0.25.0_%s.tar.gz?checksum=file:https://github.com/open-policy-agent/conftest/releases/download/v0.25.0/checksums.txt", platform)
 
 	RegisterMockTestingT(t)
 
@@ -191,7 +187,7 @@ func TestRun(t *testing.T) {
 		var extraArgs []string
 
 		expectedOutput := "Success"
-		expectedResult := `[{"PolicySetName":"policy1","ConftestOutput":"Success","Passed":true,"ReqApprovals":0,"CurApprovals":0},{"PolicySetName":"policy2","ConftestOutput":"Success","Passed":true,"ReqApprovals":0,"CurApprovals":0}]`
+		expectedResult := `[{"PolicySetName":"policy1","PolicyOutput":"Success","Passed":true,"ReqApprovals":0,"CurApprovals":0},{"PolicySetName":"policy2","PolicyOutput":"Success","Passed":true,"ReqApprovals":0,"CurApprovals":0}]`
 
 		expectedArgsPolicy1 := []string{executablePath, "test", "-p", localPolicySetPath1, filepath.Join(workdir, "testproj-default.json"), "--no-color"}
 		expectedArgsPolicy2 := []string{executablePath, "test", "-p", localPolicySetPath2, filepath.Join(workdir, "testproj-default.json"), "--no-color"}
@@ -216,7 +212,7 @@ func TestRun(t *testing.T) {
 		extraArgs := []string{"--all-namespaces"}
 
 		expectedOutput := "Success"
-		expectedResult := `[{"PolicySetName":"policy1","ConftestOutput":"","Passed":true,"ReqApprovals":0,"CurApprovals":0},{"PolicySetName":"policy2","ConftestOutput":"","Passed":true,"ReqApprovals":0,"CurApprovals":0}]`
+		expectedResult := `[{"PolicySetName":"policy1","PolicyOutput":"","Passed":true,"ReqApprovals":0,"CurApprovals":0},{"PolicySetName":"policy2","PolicyOutput":"","Passed":true,"ReqApprovals":0,"CurApprovals":0}]`
 
 		expectedArgsPolicy1 := []string{executablePath, "test", "-p", localPolicySetPath1, filepath.Join(workdir, "testproj-default.json"), "--no-color"}
 		expectedArgsPolicy2 := []string{executablePath, "test", "-p", localPolicySetPath2, filepath.Join(workdir, "testproj-default.json"), "--no-color"}
@@ -241,7 +237,7 @@ func TestRun(t *testing.T) {
 		var extraArgs []string
 
 		expectedOutput := "Success"
-		expectedResult := `[{"PolicySetName":"policy1","ConftestOutput":"Success","Passed":true,"ReqApprovals":0,"CurApprovals":0}]`
+		expectedResult := `[{"PolicySetName":"policy1","PolicyOutput":"Success","Passed":true,"ReqApprovals":0,"CurApprovals":0}]`
 
 		expectedArgsPolicy1 := []string{executablePath, "test", "-p", localPolicySetPath1, filepath.Join(workdir, "testproj-default.json"), "--no-color"}
 		expectedArgsPolicy2 := []string{executablePath, "test", "-p", localPolicySetPath2, filepath.Join(workdir, "testproj-default.json"), "--no-color"}
@@ -284,7 +280,7 @@ func TestRun(t *testing.T) {
 
 		expectedOutputPolicy1 := fmt.Sprintf("FAIL - %s - failure\n1 tests, 0 passed, 0 warnings, 1 failure, 0 exceptions", filepath.Join(workdir, "testproj-default.json"))
 		expectedOutputPolicy2 := "Success"
-		expectedResult := `[{"PolicySetName":"policy1","ConftestOutput":"FAIL - <redacted plan file> - failure\n1 tests, 0 passed, 0 warnings, 1 failure, 0 exceptions","Passed":false,"ReqApprovals":0,"CurApprovals":0},{"PolicySetName":"policy2","ConftestOutput":"Success","Passed":true,"ReqApprovals":0,"CurApprovals":0}]`
+		expectedResult := `[{"PolicySetName":"policy1","PolicyOutput":"FAIL - <redacted plan file> - failure\n1 tests, 0 passed, 0 warnings, 1 failure, 0 exceptions","Passed":false,"ReqApprovals":0,"CurApprovals":0},{"PolicySetName":"policy2","PolicyOutput":"Success","Passed":true,"ReqApprovals":0,"CurApprovals":0}]`
 
 		expectedArgsPolicy1 := []string{executablePath, "test", "-p", localPolicySetPath1, filepath.Join(workdir, "testproj-default.json"), "--no-color"}
 		expectedArgsPolicy2 := []string{executablePath, "test", "-p", localPolicySetPath2, filepath.Join(workdir, "testproj-default.json"), "--no-color"}
@@ -306,7 +302,7 @@ func TestRun(t *testing.T) {
 		var extraArgs []string
 
 		expectedOutput := fmt.Sprintf("FAIL - %s - failure\n1 tests, 0 passed, 0 warnings, 1 failure, 0 exceptions", filepath.Join(workdir, "testproj-default.json"))
-		expectedResult := `[{"PolicySetName":"policy1","ConftestOutput":"FAIL - <redacted plan file> - failure\n1 tests, 0 passed, 0 warnings, 1 failure, 0 exceptions","Passed":false,"ReqApprovals":0,"CurApprovals":0},{"PolicySetName":"policy2","ConftestOutput":"FAIL - <redacted plan file> - failure\n1 tests, 0 passed, 0 warnings, 1 failure, 0 exceptions","Passed":false,"ReqApprovals":0,"CurApprovals":0}]`
+		expectedResult := `[{"PolicySetName":"policy1","PolicyOutput":"FAIL - <redacted plan file> - failure\n1 tests, 0 passed, 0 warnings, 1 failure, 0 exceptions","Passed":false,"ReqApprovals":0,"CurApprovals":0},{"PolicySetName":"policy2","PolicyOutput":"FAIL - <redacted plan file> - failure\n1 tests, 0 passed, 0 warnings, 1 failure, 0 exceptions","Passed":false,"ReqApprovals":0,"CurApprovals":0}]`
 
 		expectedArgsPolicy1 := []string{executablePath, "test", "-p", localPolicySetPath1, filepath.Join(workdir, "testproj-default.json"), "--no-color"}
 		expectedArgsPolicy2 := []string{executablePath, "test", "-p", localPolicySetPath2, filepath.Join(workdir, "testproj-default.json"), "--no-color"}

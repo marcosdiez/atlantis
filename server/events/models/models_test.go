@@ -168,27 +168,47 @@ func TestProject_String(t *testing.T) {
 
 func TestNewProject(t *testing.T) {
 	cases := []struct {
-		path    string
-		expPath string
+		repo       string
+		path       string
+		name       string
+		expProject models.Project
 	}{
 		{
-			"/",
-			".",
+			repo: "foo/bar",
+			path: "/",
+			name: "",
+			expProject: models.Project{
+				ProjectName:  "",
+				RepoFullName: "foo/bar",
+				Path:         ".",
+			},
 		},
 		{
-			"./another/path",
-			"another/path",
+			repo: "baz/foo",
+			path: "./another/path",
+			name: "somename",
+			expProject: models.Project{
+				ProjectName:  "somename",
+				RepoFullName: "baz/foo",
+				Path:         "another/path",
+			},
 		},
 		{
-			".",
-			".",
+			repo: "baz/foo",
+			path: ".",
+			name: "somename",
+			expProject: models.Project{
+				ProjectName:  "somename",
+				RepoFullName: "baz/foo",
+				Path:         ".",
+			},
 		},
 	}
 
 	for _, c := range cases {
-		t.Run(c.path, func(t *testing.T) {
-			p := models.NewProject("repo/owner", c.path)
-			Equals(t, c.expPath, p.Path)
+		t.Run(fmt.Sprintf("%s_%s", c.name, c.path), func(t *testing.T) {
+			p := models.NewProject(c.repo, c.path, c.name)
+			Equals(t, c.expProject, p)
 		})
 	}
 }
@@ -433,8 +453,8 @@ func TestPolicyCheckResults_Summary(t *testing.T) {
 			description: "test single format with single policy set",
 			policysetResults: []models.PolicySetResult{
 				{
-					PolicySetName:  "policy1",
-					ConftestOutput: "20 tests, 19 passed, 2 warnings, 0 failures, 0 exceptions",
+					PolicySetName: "policy1",
+					PolicyOutput:  "20 tests, 19 passed, 2 warnings, 0 failures, 0 exceptions",
 				},
 			},
 			exp: "policy set: policy1: 20 tests, 19 passed, 2 warnings, 0 failures, 0 exceptions",
@@ -443,16 +463,16 @@ func TestPolicyCheckResults_Summary(t *testing.T) {
 			description: "test multiple formats with multiple policy sets",
 			policysetResults: []models.PolicySetResult{
 				{
-					PolicySetName:  "policy1",
-					ConftestOutput: "20 tests, 19 passed, 2 warnings, 0 failures, 0 exceptions",
+					PolicySetName: "policy1",
+					PolicyOutput:  "20 tests, 19 passed, 2 warnings, 0 failures, 0 exceptions",
 				},
 				{
-					PolicySetName:  "policy2",
-					ConftestOutput: "3 tests, 0 passed, 1 warning, 1 failure, 0 exceptions, 1 skipped",
+					PolicySetName: "policy2",
+					PolicyOutput:  "3 tests, 0 passed, 1 warning, 1 failure, 0 exceptions, 1 skipped",
 				},
 				{
-					PolicySetName:  "policy3",
-					ConftestOutput: "1 test, 0 passed, 1 warning, 1 failure, 1 exception",
+					PolicySetName: "policy3",
+					PolicyOutput:  "1 test, 0 passed, 1 warning, 1 failure, 1 exception",
 				},
 			},
 			exp: `policy set: policy1: 20 tests, 19 passed, 2 warnings, 0 failures, 0 exceptions

@@ -2,7 +2,7 @@
 
 Post workflow hooks can be defined to run scripts after default or custom
 workflows are executed. Post workflow hooks differ from [custom
-workflows](custom-workflows.html#custom-run-command) in that they are run
+workflows](custom-workflows.md#custom-run-command) in that they are run
 outside of Atlantis commands. Which means they do not surface their output
 back to the PR as a comment.
 
@@ -13,6 +13,27 @@ back to the PR as a comment.
 Post workflow hooks can only be specified in the Server-Side Repo Config under
 the `repos` key.
 
+## Atlantis Command Targetting
+
+By default, the workflow hook will run when any command is processed by Atlantis.
+This can be modified by specifying the `commands` key in the workflow hook containing a comma delimited list
+of Atlantis commands that the hook should be run for. Detail of the Atlantis commands
+can be found in [Using Atlantis](using-atlantis.md).
+
+### Example
+
+```yaml
+repos:
+    - id: /.*/
+      post_workflow_hooks:
+        - run: ./plan-hook.sh
+          description: Plan Hook
+          commands: plan
+        - run: ./plan-apply-hook.sh
+          description: Plan & Apply Hook
+          commands: plan, apply
+```
+
 ## Use Cases
 
 ### Cost estimation reporting
@@ -21,7 +42,7 @@ You can add a post workflow hook to perform custom reporting after all workflows
 have finished.
 
 In this example we use a custom workflow to generate cost estimates for each
-workflow using [Infracost](https://www.infracost.io/docs/integrations/atlantis/), then create a summary report after all workflows have completed.
+workflow using [Infracost](https://www.infracost.io/docs/integrations/cicd/#cicd-integrations), then create a summary report after all workflows have completed.
 
 
 ```yaml
@@ -67,7 +88,7 @@ repos:
 ### Custom `run` Command
 
 This is very similar to [custom workflow run
-command](custom-workflows.html#custom-run-command).
+command](custom-workflows.md#custom-run-command).
 
 ```yaml
 - run: custom-command

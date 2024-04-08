@@ -143,7 +143,7 @@ type ProjectCommandRunner interface {
 type JobURLSetter interface {
 	// SetJobURLWithStatus sets the commit status for the project represented by
 	// ctx and updates the status with and url to a job.
-	SetJobURLWithStatus(ctx command.ProjectContext, cmdName command.Name, status models.CommitStatus, result *command.ProjectResult) error
+	SetJobURLWithStatus(ctx command.ProjectContext, cmdName command.Name, status models.CommitStatus, res *command.ProjectResult) error
 }
 
 //go:generate pegomock generate --package mocks -o mocks/mock_job_message_sender.go JobMessageSender
@@ -320,7 +320,7 @@ func (p *DefaultProjectCommandRunner) StateRm(ctx command.ProjectContext) comman
 
 func (p *DefaultProjectCommandRunner) doApprovePolicies(ctx command.ProjectContext) (*models.PolicyCheckResults, string, error) {
 	// Acquire Atlantis lock for this repo/dir/workspace.
-	lockAttempt, err := p.Locker.TryLock(ctx.Log, ctx.Pull, ctx.User, ctx.Workspace, models.NewProject(ctx.Pull.BaseRepo.FullName, ctx.RepoRelDir), ctx.RepoLocking)
+	lockAttempt, err := p.Locker.TryLock(ctx.Log, ctx.Pull, ctx.User, ctx.Workspace, models.NewProject(ctx.Pull.BaseRepo.FullName, ctx.RepoRelDir, ctx.ProjectName), ctx.RepoLocking)
 	if err != nil {
 		return nil, "", errors.Wrap(err, "acquiring lock")
 	}
@@ -417,7 +417,7 @@ func (p *DefaultProjectCommandRunner) doPolicyCheck(ctx command.ProjectContext) 
 	// we will attempt to capture the lock here but fail to get the working directory
 	// at which point we will unlock again to preserve functionality
 	// If we fail to capture the lock here (super unlikely) then we error out and the user is forced to replan
-	lockAttempt, err := p.Locker.TryLock(ctx.Log, ctx.Pull, ctx.User, ctx.Workspace, models.NewProject(ctx.Pull.BaseRepo.FullName, ctx.RepoRelDir), ctx.RepoLocking)
+	lockAttempt, err := p.Locker.TryLock(ctx.Log, ctx.Pull, ctx.User, ctx.Workspace, models.NewProject(ctx.Pull.BaseRepo.FullName, ctx.RepoRelDir, ctx.ProjectName), ctx.RepoLocking)
 
 	if err != nil {
 		return nil, "", errors.Wrap(err, "acquiring lock")
@@ -425,7 +425,7 @@ func (p *DefaultProjectCommandRunner) doPolicyCheck(ctx command.ProjectContext) 
 	if !lockAttempt.LockAcquired {
 		return nil, lockAttempt.LockFailureReason, nil
 	}
-	ctx.Log.Debug("acquired lock for project")
+	ctx.Log.Debug("acquired lock for project.")
 
 	// Acquire internal lock for the directory we're going to operate in.
 	// We should refactor this to keep the lock for the duration of plan and policy check since as of now
@@ -489,14 +489,23 @@ func (p *DefaultProjectCommandRunner) doPolicyCheck(ctx command.ProjectContext) 
 	var preConftestOutput []string
 	var postConftestOutput []string
 	var policySetResults []models.PolicySetResult
+
 	for i, output := range outputs {
 		index = i
-		err = json.Unmarshal([]byte(strings.Join([]string{output}, "\n")), &policySetResults)
-		if err == nil {
-			break
+		if !ctx.CustomPolicyCheck {
+			err = json.Unmarshal([]byte(strings.Join([]string{output}, "\n")), &policySetResults)
+			if err == nil {
+				break
+			}
+			preConftestOutput = append(preConftestOutput, output)
+		} else {
+			// Using a policy tool other than Conftest, manually building result struct
+			passed := !strings.Contains(strings.ToLower(output), "fail")
+			policySetResults = append(policySetResults, models.PolicySetResult{PolicySetName: "Custom", PolicyOutput: output, Passed: passed, ReqApprovals: 1, CurApprovals: 0})
+			preConftestOutput = append(preConftestOutput, "")
 		}
-		preConftestOutput = append(preConftestOutput, output)
 	}
+
 	if policySetResults == nil {
 		return nil, "", errors.New("unable to unmarshal conftest output")
 	}
@@ -527,7 +536,7 @@ func (p *DefaultProjectCommandRunner) doPolicyCheck(ctx command.ProjectContext) 
 
 func (p *DefaultProjectCommandRunner) doPlan(ctx command.ProjectContext) (*models.PlanSuccess, string, error) {
 	// Acquire Atlantis lock for this repo/dir/workspace.
-	lockAttempt, err := p.Locker.TryLock(ctx.Log, ctx.Pull, ctx.User, ctx.Workspace, models.NewProject(ctx.Pull.BaseRepo.FullName, ctx.RepoRelDir), ctx.RepoLocking)
+	lockAttempt, err := p.Locker.TryLock(ctx.Log, ctx.Pull, ctx.User, ctx.Workspace, models.NewProject(ctx.Pull.BaseRepo.FullName, ctx.RepoRelDir, ctx.ProjectName), ctx.RepoLocking)
 	if err != nil {
 		return nil, "", errors.Wrap(err, "acquiring lock")
 	}
@@ -543,9 +552,9 @@ func (p *DefaultProjectCommandRunner) doPlan(ctx command.ProjectContext) (*model
 	}
 	defer unlockFn()
 
-	p.WorkingDir.SetSafeToReClone()
+	p.WorkingDir.SetCheckForUpstreamChanges()
 	// Clone is idempotent so okay to run even if the repo was already cloned.
-	repoDir, hasDiverged, cloneErr := p.WorkingDir.Clone(ctx.HeadRepo, ctx.Pull, ctx.Workspace)
+	repoDir, mergedAgain, cloneErr := p.WorkingDir.Clone(ctx.Log, ctx.HeadRepo, ctx.Pull, ctx.Workspace)
 	if cloneErr != nil {
 		if unlockErr := lockAttempt.UnlockFn(); unlockErr != nil {
 			ctx.Log.Err("error unlocking state after plan error: %v", unlockErr)
@@ -576,7 +585,7 @@ func (p *DefaultProjectCommandRunner) doPlan(ctx command.ProjectContext) (*model
 		TerraformOutput: strings.Join(outputs, "\n"),
 		RePlanCmd:       ctx.RePlanCmd,
 		ApplyCmd:        ctx.ApplyCmd,
-		HasDiverged:     hasDiverged,
+		MergedAgain:     mergedAgain,
 	}, "", nil
 }
 
@@ -594,6 +603,11 @@ func (p *DefaultProjectCommandRunner) doApply(ctx command.ProjectContext) (apply
 	}
 
 	failure, err = p.CommandRequirementHandler.ValidateApplyProject(repoDir, ctx)
+	if failure != "" || err != nil {
+		return "", failure, err
+	}
+
+	failure, err = p.CommandRequirementHandler.ValidateProjectDependencies(ctx)
 	if failure != "" || err != nil {
 		return "", failure, err
 	}
@@ -653,7 +667,7 @@ func (p *DefaultProjectCommandRunner) doVersion(ctx command.ProjectContext) (ver
 
 func (p *DefaultProjectCommandRunner) doImport(ctx command.ProjectContext) (out *models.ImportSuccess, failure string, err error) {
 	// Clone is idempotent so okay to run even if the repo was already cloned.
-	repoDir, _, cloneErr := p.WorkingDir.Clone(ctx.HeadRepo, ctx.Pull, ctx.Workspace)
+	repoDir, _, cloneErr := p.WorkingDir.Clone(ctx.Log, ctx.HeadRepo, ctx.Pull, ctx.Workspace)
 	if cloneErr != nil {
 		return nil, "", cloneErr
 	}
@@ -668,7 +682,7 @@ func (p *DefaultProjectCommandRunner) doImport(ctx command.ProjectContext) (out 
 	}
 
 	// Acquire Atlantis lock for this repo/dir/workspace.
-	lockAttempt, err := p.Locker.TryLock(ctx.Log, ctx.Pull, ctx.User, ctx.Workspace, models.NewProject(ctx.Pull.BaseRepo.FullName, ctx.RepoRelDir), ctx.RepoLocking)
+	lockAttempt, err := p.Locker.TryLock(ctx.Log, ctx.Pull, ctx.User, ctx.Workspace, models.NewProject(ctx.Pull.BaseRepo.FullName, ctx.RepoRelDir, ctx.ProjectName), ctx.RepoLocking)
 	if err != nil {
 		return nil, "", errors.Wrap(err, "acquiring lock")
 	}
@@ -699,7 +713,7 @@ func (p *DefaultProjectCommandRunner) doImport(ctx command.ProjectContext) (out 
 
 func (p *DefaultProjectCommandRunner) doStateRm(ctx command.ProjectContext) (out *models.StateRmSuccess, failure string, err error) {
 	// Clone is idempotent so okay to run even if the repo was already cloned.
-	repoDir, _, cloneErr := p.WorkingDir.Clone(ctx.HeadRepo, ctx.Pull, ctx.Workspace)
+	repoDir, _, cloneErr := p.WorkingDir.Clone(ctx.Log, ctx.HeadRepo, ctx.Pull, ctx.Workspace)
 	if cloneErr != nil {
 		return nil, "", cloneErr
 	}
@@ -709,7 +723,7 @@ func (p *DefaultProjectCommandRunner) doStateRm(ctx command.ProjectContext) (out
 	}
 
 	// Acquire Atlantis lock for this repo/dir/workspace.
-	lockAttempt, err := p.Locker.TryLock(ctx.Log, ctx.Pull, ctx.User, ctx.Workspace, models.NewProject(ctx.Pull.BaseRepo.FullName, ctx.RepoRelDir), ctx.RepoLocking)
+	lockAttempt, err := p.Locker.TryLock(ctx.Log, ctx.Pull, ctx.User, ctx.Workspace, models.NewProject(ctx.Pull.BaseRepo.FullName, ctx.RepoRelDir, ctx.ProjectName), ctx.RepoLocking)
 	if err != nil {
 		return nil, "", errors.Wrap(err, "acquiring lock")
 	}

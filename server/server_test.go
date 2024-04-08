@@ -27,10 +27,11 @@ import (
 	"github.com/gorilla/mux"
 	. "github.com/petergtz/pegomock/v4"
 	"github.com/runatlantis/atlantis/server"
-	"github.com/runatlantis/atlantis/server/controllers/templates"
-	tMocks "github.com/runatlantis/atlantis/server/controllers/templates/mocks"
+	"github.com/runatlantis/atlantis/server/controllers/web_templates"
+	tMocks "github.com/runatlantis/atlantis/server/controllers/web_templates/mocks"
 	"github.com/runatlantis/atlantis/server/core/locking/mocks"
 	"github.com/runatlantis/atlantis/server/events/models"
+	"github.com/runatlantis/atlantis/server/jobs"
 	"github.com/runatlantis/atlantis/server/logging"
 	. "github.com/runatlantis/atlantis/testing"
 )
@@ -100,24 +101,25 @@ func TestIndex_Success(t *testing.T) {
 	u, err := url.Parse("https://example.com")
 	Ok(t, err)
 	s := server.Server{
-		Locker:          l,
-		ApplyLocker:     al,
-		IndexTemplate:   it,
-		Router:          r,
-		AtlantisVersion: atlantisVersion,
-		AtlantisURL:     u,
-		Logger:          logging.NewNoopLogger(t),
+		Locker:                  l,
+		ApplyLocker:             al,
+		IndexTemplate:           it,
+		Router:                  r,
+		AtlantisVersion:         atlantisVersion,
+		AtlantisURL:             u,
+		Logger:                  logging.NewNoopLogger(t),
+		ProjectCmdOutputHandler: &jobs.NoopProjectOutputHandler{},
 	}
 	req, _ := http.NewRequest("GET", "", bytes.NewBuffer(nil))
 	w := httptest.NewRecorder()
 	s.Index(w, req)
-	it.VerifyWasCalledOnce().Execute(w, templates.IndexData{
-		ApplyLock: templates.ApplyLockData{
+	it.VerifyWasCalledOnce().Execute(w, web_templates.IndexData{
+		ApplyLock: web_templates.ApplyLockData{
 			Locked:        false,
 			Time:          time.Time{},
 			TimeFormatted: "01-01-0001 00:00:00",
 		},
-		Locks: []templates.LockIndexData{
+		Locks: []web_templates.LockIndexData{
 			{
 				LockPath:      "/lock?id=lkysow%252Fatlantis-example%252F.%252Fdefault",
 				RepoFullName:  "lkysow/atlantis-example",
@@ -126,7 +128,8 @@ func TestIndex_Success(t *testing.T) {
 				TimeFormatted: now.Format("02-01-2006 15:04:05"),
 			},
 		},
-		AtlantisVersion: atlantisVersion,
+		PullToJobMapping: []jobs.PullInfoWithJobIDs{},
+		AtlantisVersion:  atlantisVersion,
 	})
 	ResponseContains(t, w, http.StatusOK, "")
 }

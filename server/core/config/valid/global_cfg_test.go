@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/go-version"
 	"github.com/mohae/deepcopy"
 	"github.com/runatlantis/atlantis/server/core/config"
+	"github.com/runatlantis/atlantis/server/core/config/raw"
 	"github.com/runatlantis/atlantis/server/core/config/valid"
 	"github.com/runatlantis/atlantis/server/logging"
 	. "github.com/runatlantis/atlantis/testing"
@@ -81,6 +82,8 @@ func TestNewGlobalCfg(t *testing.T) {
 				DeleteSourceBranchOnMerge: Bool(false),
 				RepoLocking:               Bool(true),
 				PolicyCheck:               Bool(false),
+				CustomPolicyCheck:         Bool(false),
+				AutoDiscover:              raw.DefaultAutoDiscover(),
 			},
 		},
 		Workflows: map[string]valid.Workflow{
@@ -89,115 +92,33 @@ func TestNewGlobalCfg(t *testing.T) {
 	}
 
 	cases := []struct {
-		allowRepoCfg       bool
-		approvedReq        bool
-		mergeableReq       bool
-		unDivergedReq      bool
-		policyCheckEnabled bool
+		allowAllRepoSettings bool
+		policyCheckEnabled   bool
 	}{
 		{
-			allowRepoCfg:       false,
-			approvedReq:        false,
-			mergeableReq:       false,
-			unDivergedReq:      false,
-			policyCheckEnabled: false,
+			allowAllRepoSettings: false,
+			policyCheckEnabled:   false,
 		},
 		{
-			allowRepoCfg:       true,
-			approvedReq:        false,
-			mergeableReq:       false,
-			unDivergedReq:      false,
-			policyCheckEnabled: false,
+			allowAllRepoSettings: true,
+			policyCheckEnabled:   false,
 		},
 		{
-			allowRepoCfg:       false,
-			approvedReq:        true,
-			mergeableReq:       false,
-			unDivergedReq:      false,
-			policyCheckEnabled: false,
+			allowAllRepoSettings: true,
+			policyCheckEnabled:   true,
 		},
 		{
-			allowRepoCfg:       false,
-			approvedReq:        false,
-			mergeableReq:       true,
-			unDivergedReq:      false,
-			policyCheckEnabled: false,
-		},
-		{
-			allowRepoCfg:       false,
-			approvedReq:        true,
-			mergeableReq:       true,
-			unDivergedReq:      false,
-			policyCheckEnabled: false,
-		},
-		{
-			allowRepoCfg:       true,
-			approvedReq:        true,
-			mergeableReq:       true,
-			unDivergedReq:      false,
-			policyCheckEnabled: false,
-		},
-		{
-			allowRepoCfg:       false,
-			approvedReq:        false,
-			mergeableReq:       false,
-			unDivergedReq:      true,
-			policyCheckEnabled: false,
-		},
-		{
-			allowRepoCfg:       true,
-			approvedReq:        false,
-			mergeableReq:       false,
-			unDivergedReq:      true,
-			policyCheckEnabled: false,
-		},
-		{
-			allowRepoCfg:       false,
-			approvedReq:        true,
-			mergeableReq:       false,
-			unDivergedReq:      true,
-			policyCheckEnabled: false,
-		},
-		{
-			allowRepoCfg:       false,
-			approvedReq:        false,
-			mergeableReq:       true,
-			unDivergedReq:      true,
-			policyCheckEnabled: false,
-		},
-		{
-			allowRepoCfg:       false,
-			approvedReq:        true,
-			mergeableReq:       true,
-			unDivergedReq:      true,
-			policyCheckEnabled: false,
-		},
-		{
-			allowRepoCfg:       true,
-			approvedReq:        true,
-			mergeableReq:       true,
-			unDivergedReq:      true,
-			policyCheckEnabled: false,
-		},
-		{
-			allowRepoCfg:       true,
-			approvedReq:        true,
-			mergeableReq:       true,
-			unDivergedReq:      true,
-			policyCheckEnabled: true,
+			allowAllRepoSettings: false,
+			policyCheckEnabled:   true,
 		},
 	}
 
 	for _, c := range cases {
-		caseName := fmt.Sprintf("allow_repo: %t, approved: %t, mergeable: %t, undiverged: %t, policy_check: %t",
-			c.allowRepoCfg, c.approvedReq, c.mergeableReq, c.unDivergedReq, c.policyCheckEnabled)
+		caseName := fmt.Sprintf("allow_repo: %t, policy_check: %t", c.allowAllRepoSettings, c.policyCheckEnabled)
 		t.Run(caseName, func(t *testing.T) {
 			globalCfgArgs := valid.GlobalCfgArgs{
-				AllowRepoCfg:       c.allowRepoCfg,
-				MergeableReq:       c.mergeableReq,
-				ApprovedReq:        c.approvedReq,
-				UnDivergedReq:      c.unDivergedReq,
-				PolicyCheckEnabled: c.policyCheckEnabled,
+				AllowAllRepoSettings: c.allowAllRepoSettings,
+				PolicyCheckEnabled:   c.policyCheckEnabled,
 			}
 			act := valid.NewGlobalCfgFromArgs(globalCfgArgs)
 
@@ -206,24 +127,9 @@ func TestNewGlobalCfg(t *testing.T) {
 			exp.Repos[0].IDRegex = regexp.MustCompile(".*") // deepcopy doesn't copy the regex.
 			exp.Repos[0].BranchRegex = regexp.MustCompile(".*")
 
-			if c.allowRepoCfg {
+			if c.allowAllRepoSettings {
 				exp.Repos[0].AllowCustomWorkflows = Bool(true)
 				exp.Repos[0].AllowedOverrides = []string{"plan_requirements", "apply_requirements", "import_requirements", "workflow", "delete_source_branch_on_merge", "repo_locking", "policy_check"}
-			}
-			if c.mergeableReq {
-				exp.Repos[0].PlanRequirements = append(exp.Repos[0].PlanRequirements, "mergeable")
-				exp.Repos[0].ApplyRequirements = append(exp.Repos[0].ApplyRequirements, "mergeable")
-				exp.Repos[0].ImportRequirements = append(exp.Repos[0].ImportRequirements, "mergeable")
-			}
-			if c.approvedReq {
-				exp.Repos[0].PlanRequirements = append(exp.Repos[0].PlanRequirements, "approved")
-				exp.Repos[0].ApplyRequirements = append(exp.Repos[0].ApplyRequirements, "approved")
-				exp.Repos[0].ImportRequirements = append(exp.Repos[0].ImportRequirements, "approved")
-			}
-			if c.unDivergedReq {
-				exp.Repos[0].PlanRequirements = append(exp.Repos[0].PlanRequirements, "undiverged")
-				exp.Repos[0].ApplyRequirements = append(exp.Repos[0].ApplyRequirements, "undiverged")
-				exp.Repos[0].ImportRequirements = append(exp.Repos[0].ImportRequirements, "undiverged")
 			}
 			if c.policyCheckEnabled {
 				exp.Repos[0].PlanRequirements = append(exp.Repos[0].PlanRequirements, "policies_passed")
@@ -261,10 +167,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 			gCfg: valid.GlobalCfg{
 				Repos: []valid.Repo{
 					valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-						AllowRepoCfg:  true,
-						MergeableReq:  false,
-						ApprovedReq:   false,
-						UnDivergedReq: false,
+						AllowAllRepoSettings: true,
 					}).Repos[0],
 					{
 						ID:                   "github.com/owner/repo",
@@ -294,10 +197,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 			gCfg: valid.GlobalCfg{
 				Repos: []valid.Repo{
 					valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-						AllowRepoCfg:  true,
-						MergeableReq:  false,
-						ApprovedReq:   false,
-						UnDivergedReq: false,
+						AllowAllRepoSettings: true,
 					}).Repos[0],
 					{
 						ID:                   "github.com/owner/repo",
@@ -327,10 +227,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 			gCfg: valid.GlobalCfg{
 				Repos: []valid.Repo{
 					valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-						AllowRepoCfg:  true,
-						MergeableReq:  false,
-						ApprovedReq:   false,
-						UnDivergedReq: false,
+						AllowAllRepoSettings: true,
 					}).Repos[0],
 					{
 						ID:                   "github.com/owner/repo",
@@ -362,10 +259,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 			gCfg: valid.GlobalCfg{
 				Repos: []valid.Repo{
 					valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-						AllowRepoCfg:  true,
-						MergeableReq:  false,
-						ApprovedReq:   false,
-						UnDivergedReq: false,
+						AllowAllRepoSettings: true,
 					}).Repos[0],
 					{
 						ID:                   "github.com/owner/repo",
@@ -397,10 +291,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 			gCfg: valid.GlobalCfg{
 				Repos: []valid.Repo{
 					valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-						AllowRepoCfg:  true,
-						MergeableReq:  false,
-						ApprovedReq:   false,
-						UnDivergedReq: false,
+						AllowAllRepoSettings: true,
 					}).Repos[0],
 					{
 						ID:                   "github.com/owner/repo",
@@ -430,10 +321,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 			gCfg: valid.GlobalCfg{
 				Repos: []valid.Repo{
 					valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-						AllowRepoCfg:  true,
-						MergeableReq:  false,
-						ApprovedReq:   false,
-						UnDivergedReq: false,
+						AllowAllRepoSettings: true,
 					}).Repos[0],
 					{
 						ID:                   "github.com/owner/repo",
@@ -461,10 +349,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 		},
 		"workflow not allowed": {
 			gCfg: valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-				AllowRepoCfg:  false,
-				MergeableReq:  false,
-				ApprovedReq:   false,
-				UnDivergedReq: false,
+				AllowAllRepoSettings: false,
 			}),
 			rCfg: valid.RepoCfg{
 				Projects: []valid.Project{
@@ -478,10 +363,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 		},
 		"custom workflows not allowed": {
 			gCfg: valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-				AllowRepoCfg:  false,
-				MergeableReq:  false,
-				ApprovedReq:   false,
-				UnDivergedReq: false,
+				AllowAllRepoSettings: false,
 			}),
 			rCfg: valid.RepoCfg{
 				Workflows: map[string]valid.Workflow{
@@ -493,10 +375,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 		},
 		"custom workflows allowed": {
 			gCfg: valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-				AllowRepoCfg:  true,
-				MergeableReq:  false,
-				ApprovedReq:   false,
-				UnDivergedReq: false,
+				AllowAllRepoSettings: true,
 			}),
 			rCfg: valid.RepoCfg{
 				Workflows: map[string]valid.Workflow{
@@ -508,10 +387,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 		},
 		"repo uses custom workflow defined on repo": {
 			gCfg: valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-				AllowRepoCfg:  true,
-				MergeableReq:  false,
-				ApprovedReq:   false,
-				UnDivergedReq: false,
+				AllowAllRepoSettings: true,
 			}),
 			rCfg: valid.RepoCfg{
 				Projects: []valid.Project{
@@ -532,10 +408,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 			gCfg: valid.GlobalCfg{
 				Repos: []valid.Repo{
 					valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-						AllowRepoCfg:  false,
-						MergeableReq:  false,
-						ApprovedReq:   false,
-						UnDivergedReq: false,
+						AllowAllRepoSettings: false,
 					}).Repos[0],
 					{
 						ID:                   "github.com/owner/repo",
@@ -553,10 +426,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 		},
 		"repo uses global workflow": {
 			gCfg: valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-				AllowRepoCfg:  true,
-				MergeableReq:  false,
-				ApprovedReq:   false,
-				UnDivergedReq: false,
+				AllowAllRepoSettings: true,
 			}),
 			rCfg: valid.RepoCfg{
 				Projects: []valid.Project{
@@ -572,10 +442,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 		},
 		"plan_reqs not allowed": {
 			gCfg: valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-				AllowRepoCfg:  false,
-				MergeableReq:  false,
-				ApprovedReq:   false,
-				UnDivergedReq: false,
+				AllowAllRepoSettings: false,
 			}),
 			rCfg: valid.RepoCfg{
 				Projects: []valid.Project{
@@ -591,10 +458,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 		},
 		"apply_reqs not allowed": {
 			gCfg: valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-				AllowRepoCfg:  false,
-				MergeableReq:  false,
-				ApprovedReq:   false,
-				UnDivergedReq: false,
+				AllowAllRepoSettings: false,
 			}),
 			rCfg: valid.RepoCfg{
 				Projects: []valid.Project{
@@ -610,10 +474,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 		},
 		"import_reqs not allowed": {
 			gCfg: valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-				AllowRepoCfg:  false,
-				MergeableReq:  false,
-				ApprovedReq:   false,
-				UnDivergedReq: false,
+				AllowAllRepoSettings: false,
 			}),
 			rCfg: valid.RepoCfg{
 				Projects: []valid.Project{
@@ -629,10 +490,7 @@ func TestGlobalCfg_ValidateRepoCfg(t *testing.T) {
 		},
 		"repo workflow doesn't exist": {
 			gCfg: valid.NewGlobalCfgFromArgs(valid.GlobalCfgArgs{
-				AllowRepoCfg:  true,
-				MergeableReq:  false,
-				ApprovedReq:   false,
-				UnDivergedReq: false,
+				AllowAllRepoSettings: true,
 			}),
 			rCfg: valid.RepoCfg{
 				Projects: []valid.Project{
@@ -707,11 +565,12 @@ policies:
 						},
 					},
 				},
-				RepoRelDir:      ".",
-				Workspace:       "default",
-				Name:            "",
-				AutoplanEnabled: false,
-				RepoLocking:     true,
+				RepoRelDir:        ".",
+				Workspace:         "default",
+				Name:              "",
+				AutoplanEnabled:   false,
+				RepoLocking:       true,
+				CustomPolicyCheck: false,
 			},
 		},
 		"policies set correct version if specified": {
@@ -755,11 +614,12 @@ policies:
 						},
 					},
 				},
-				RepoRelDir:      ".",
-				Workspace:       "default",
-				Name:            "",
-				AutoplanEnabled: false,
-				RepoLocking:     true,
+				RepoRelDir:        ".",
+				Workspace:         "default",
+				Name:              "",
+				AutoplanEnabled:   false,
+				RepoLocking:       true,
+				CustomPolicyCheck: false,
 			},
 		},
 	}
@@ -772,19 +632,13 @@ policies:
 				Ok(t, os.WriteFile(path, []byte(c.gCfg), 0600))
 				var err error
 				globalCfgArgs := valid.GlobalCfgArgs{
-					AllowRepoCfg:  false,
-					MergeableReq:  false,
-					ApprovedReq:   false,
-					UnDivergedReq: false,
+					AllowAllRepoSettings: false,
 				}
 				global, err = (&config.ParserValidator{}).ParseGlobalCfg(path, valid.NewGlobalCfgFromArgs(globalCfgArgs))
 				Ok(t, err)
 			} else {
 				globalCfgArgs := valid.GlobalCfgArgs{
-					AllowRepoCfg:  false,
-					MergeableReq:  false,
-					ApprovedReq:   false,
-					UnDivergedReq: false,
+					AllowAllRepoSettings: false,
 				}
 				global = valid.NewGlobalCfgFromArgs(globalCfgArgs)
 			}
@@ -848,12 +702,13 @@ workflows:
 					Import:  valid.DefaultImportStage,
 					StateRm: valid.DefaultStateRmStage,
 				},
-				RepoRelDir:      ".",
-				Workspace:       "default",
-				Name:            "",
-				AutoplanEnabled: false,
-				PolicySets:      emptyPolicySets,
-				RepoLocking:     true,
+				RepoRelDir:        ".",
+				Workspace:         "default",
+				Name:              "",
+				AutoplanEnabled:   false,
+				PolicySets:        emptyPolicySets,
+				RepoLocking:       true,
+				CustomPolicyCheck: false,
 			},
 		},
 		"repo-side plan reqs win out if allowed": {
@@ -883,6 +738,7 @@ repos:
 				AutoplanEnabled:    false,
 				PolicySets:         emptyPolicySets,
 				RepoLocking:        true,
+				CustomPolicyCheck:  false,
 			},
 		},
 		"repo-side apply reqs win out if allowed": {
@@ -912,6 +768,70 @@ repos:
 				AutoplanEnabled:    false,
 				PolicySets:         emptyPolicySets,
 				RepoLocking:        true,
+				CustomPolicyCheck:  false,
+			},
+		},
+		"repo-side apply reqs should include non-overrideable 'policies_passed' req when overridden and policies enabled": {
+			gCfg: `
+repos:
+- id: /.*/
+  allowed_overrides: [apply_requirements]
+  apply_requirements: [approved]
+  policy_check: true
+`,
+			repoID: "github.com/owner/repo",
+			proj: valid.Project{
+				Dir:                ".",
+				Workspace:          "default",
+				PlanRequirements:   []string{},
+				ApplyRequirements:  []string{"mergeable"},
+				ImportRequirements: []string{},
+			},
+			repoWorkflows: nil,
+			exp: valid.MergedProjectCfg{
+				PlanRequirements:   []string{},
+				ApplyRequirements:  []string{"mergeable", "policies_passed"},
+				ImportRequirements: []string{},
+				Workflow:           defaultWorkflow,
+				RepoRelDir:         ".",
+				Workspace:          "default",
+				Name:               "",
+				AutoplanEnabled:    false,
+				PolicySets:         emptyPolicySets,
+				RepoLocking:        true,
+				CustomPolicyCheck:  false,
+				PolicyCheck:        true,
+			},
+		},
+		"repo-side apply reqs should not include non-overrideable 'policies_passed' req when overridden and policies disabled": {
+			gCfg: `
+repos:
+- id: /.*/
+  allowed_overrides: [apply_requirements]
+  apply_requirements: [approved]
+`,
+			repoID: "github.com/owner/repo",
+			proj: valid.Project{
+				Dir:                ".",
+				Workspace:          "default",
+				PlanRequirements:   []string{},
+				ApplyRequirements:  []string{"mergeable"},
+				ImportRequirements: []string{},
+			},
+			repoWorkflows: nil,
+			exp: valid.MergedProjectCfg{
+				PlanRequirements:   []string{},
+				ApplyRequirements:  []string{"mergeable"},
+				ImportRequirements: []string{},
+				Workflow:           defaultWorkflow,
+				RepoRelDir:         ".",
+				Workspace:          "default",
+				Name:               "",
+				AutoplanEnabled:    false,
+				PolicySets:         emptyPolicySets,
+				RepoLocking:        true,
+				CustomPolicyCheck:  false,
+				PolicyCheck:        false,
 			},
 		},
 		"repo-side import reqs win out if allowed": {
@@ -941,6 +861,7 @@ repos:
 				AutoplanEnabled:    false,
 				PolicySets:         emptyPolicySets,
 				RepoLocking:        true,
+				CustomPolicyCheck:  false,
 			},
 		},
 		"repo-side repo_locking win out if allowed": {
@@ -957,6 +878,7 @@ repos:
 				ApplyRequirements:  []string{},
 				ImportRequirements: []string{},
 				RepoLocking:        Bool(true),
+				CustomPolicyCheck:  Bool(false),
 			},
 			repoWorkflows: nil,
 			exp: valid.MergedProjectCfg{
@@ -970,6 +892,7 @@ repos:
 				AutoplanEnabled:    false,
 				PolicySets:         emptyPolicySets,
 				RepoLocking:        false,
+				CustomPolicyCheck:  false,
 			},
 		},
 		"last server-side match wins": {
@@ -1006,6 +929,7 @@ repos:
 				AutoplanEnabled:    false,
 				PolicySets:         emptyPolicySets,
 				RepoLocking:        true,
+				CustomPolicyCheck:  false,
 			},
 		},
 		"autoplan is set properly": {
@@ -1032,6 +956,7 @@ repos:
 				AutoplanEnabled:    true,
 				PolicySets:         emptyPolicySets,
 				RepoLocking:        true,
+				CustomPolicyCheck:  false,
 			},
 		},
 		"execution order group is set": {
@@ -1060,6 +985,7 @@ repos:
 				PolicySets:          emptyPolicySets,
 				ExecutionOrderGroup: 10,
 				RepoLocking:         true,
+				CustomPolicyCheck:   false,
 			},
 		},
 	}
@@ -1072,20 +998,14 @@ repos:
 				Ok(t, os.WriteFile(path, []byte(c.gCfg), 0600))
 				var err error
 				globalCfgArgs := valid.GlobalCfgArgs{
-					AllowRepoCfg:  false,
-					MergeableReq:  false,
-					ApprovedReq:   false,
-					UnDivergedReq: false,
+					AllowAllRepoSettings: false,
 				}
 
 				global, err = (&config.ParserValidator{}).ParseGlobalCfg(path, valid.NewGlobalCfgFromArgs(globalCfgArgs))
 				Ok(t, err)
 			} else {
 				globalCfgArgs := valid.GlobalCfgArgs{
-					AllowRepoCfg:  false,
-					MergeableReq:  false,
-					ApprovedReq:   false,
-					UnDivergedReq: false,
+					AllowAllRepoSettings: false,
 				}
 				global = valid.NewGlobalCfgFromArgs(globalCfgArgs)
 			}
@@ -1254,6 +1174,7 @@ repos:
 				PolicySets:         emptyPolicySets,
 				RepoLocking:        true,
 				PolicyCheck:        false,
+				CustomPolicyCheck:  false,
 			},
 		},
 		"global policy check enabled": {
@@ -1293,6 +1214,7 @@ repos:
 				PolicySets:         emptyPolicySets,
 				RepoLocking:        true,
 				PolicyCheck:        true,
+				CustomPolicyCheck:  false,
 			},
 		},
 		"global policy check enabled except current repo": {
@@ -1333,6 +1255,7 @@ repos:
 				PolicySets:         emptyPolicySets,
 				RepoLocking:        true,
 				PolicyCheck:        false,
+				CustomPolicyCheck:  false,
 			},
 		},
 		"global policy check disabled and disabled on current repo": {
@@ -1373,6 +1296,7 @@ repos:
 				PolicySets:         emptyPolicySets,
 				RepoLocking:        true,
 				PolicyCheck:        false,
+				CustomPolicyCheck:  false,
 			},
 		},
 		"global policy check disabled and enabled on current repo": {
@@ -1413,6 +1337,7 @@ repos:
 				PolicySets:         emptyPolicySets,
 				RepoLocking:        true,
 				PolicyCheck:        true, // Project will have policy check as true but since it is globally disable it wont actually run
+				CustomPolicyCheck:  false,
 			},
 		},
 	}
@@ -1424,11 +1349,8 @@ repos:
 			Ok(t, os.WriteFile(path, []byte(c.gCfg), 0600))
 			var err error
 			globalCfgArgs := valid.GlobalCfgArgs{
-				AllowRepoCfg:       false,
-				MergeableReq:       false,
-				ApprovedReq:        false,
-				UnDivergedReq:      false,
-				PolicyCheckEnabled: c.gPolicyCheck,
+				AllowAllRepoSettings: false,
+				PolicyCheckEnabled:   c.gPolicyCheck,
 			}
 
 			global, err = (&config.ParserValidator{}).ParseGlobalCfg(path, valid.NewGlobalCfgFromArgs(globalCfgArgs))

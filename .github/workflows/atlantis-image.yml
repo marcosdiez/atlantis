@@ -4,16 +4,14 @@ on:
   push:
     branches:
       - 'main'
+      - 'release-**'
     tags:
       - v*.*.* # stable release like, v0.19.2
       - v*.*.*-pre.* # pre release like, v0.19.0-pre.calendardate
   pull_request:
-    paths:
-      - 'Dockerfile'
-      - 'docker-entrypoint.sh'
-      - '.github/workflows/atlantis-image.yml'
-      - '**.go'
-      - 'go.*'
+    branches:
+      - 'main'
+      - 'release-**'
   workflow_dispatch:
 
 concurrency:
@@ -21,7 +19,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    outputs:
+      should-run-build: ${{ steps.changes.outputs.src == 'true' || startsWith(github.ref, 'refs/tags/') }}
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            src:
+              - 'Dockerfile'
+              - 'docker-entrypoint.sh'
+              - '.github/workflows/atlantis-image.yml'
+              - '**.go'
+              - 'go.*'
+
   build:
+    needs: [changes]
+    if: needs.changes.outputs.should-run-build == 'true'
+    name: Build Image
     strategy:
       matrix:
         image_type: [alpine, debian]
@@ -42,7 +61,7 @@ jobs:
         dockerfile: "Dockerfile"
 
     - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
+      uses: docker/setup-qemu-action@v3
       with:
         image: tonistiigi/binfmt:latest
         platforms: arm64,arm
@@ -52,7 +71,7 @@ jobs:
       # https://github.com/docker/build-push-action/issues/761#issuecomment-1575006515
       with:
         driver-opts: |
-          image=moby/buildkit:v0.10.6
+          image=moby/buildkit:v0.12.5
 
     # release version is the name of the tag i.e. v0.10.0
     # release version also has the image type appended i.e. v0.10.0-alpine
@@ -123,3 +142,14 @@ jobs:
         target: ${{ matrix.image_type }}
         labels: ${{ steps.meta.outputs.labels }}
         outputs: type=image,name=target,annotation-index.org.opencontainers.image.description=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.description'] }}
+
+  skip-build:
+    needs: [changes]
+    if: needs.changes.outputs.should-run-build == 'false'
+    name: Build Image
+    strategy:
+      matrix:
+        image_type: [alpine, debian]
+    runs-on: ubuntu-22.04
+    steps:
+      - run: 'echo "No build required"'

@@ -46,7 +46,7 @@ type ProjectCommandContextBuilder interface {
 // object relevant to the command it applies to.
 type CommandScopedStatsProjectCommandContextBuilder struct {
 	ProjectCommandContextBuilder
-	// Conciously making this global since it gets flushed periodically anyways
+	// Consciously making this global since it gets flushed periodically anyways
 	ProjectCounter tally.Counter
 }
 
@@ -144,6 +144,7 @@ func (cb *DefaultProjectCommandContextBuilder) BuildProjectContext(
 		abortOnExcecutionOrderFail,
 		ctx.Scope,
 		ctx.PullRequestStatus,
+		ctx.PullStatus,
 	)
 
 	projectCmds = append(projectCmds, projectCmdContext)
@@ -215,6 +216,7 @@ func (cb *PolicyCheckProjectCommandContextBuilder) BuildProjectContext(
 			abortOnExcecutionOrderFail,
 			ctx.Scope,
 			ctx.PullRequestStatus,
+			ctx.PullStatus,
 		))
 	}
 
@@ -238,7 +240,8 @@ func newProjectCommandContext(ctx *command.Context,
 	verbose bool,
 	abortOnExcecutionOrderFail bool,
 	scope tally.Scope,
-	pullStatus models.PullReqStatus,
+	pullReqStatus models.PullReqStatus,
+	pullStatus *models.PullStatus,
 ) command.ProjectContext {
 
 	var projectPlanStatus models.ProjectPlanStatus
@@ -271,9 +274,11 @@ func newProjectCommandContext(ctx *command.Context,
 		AutomergeEnabled:           automergeEnabled,
 		DeleteSourceBranchOnMerge:  projCfg.DeleteSourceBranchOnMerge,
 		RepoLocking:                projCfg.RepoLocking,
+		CustomPolicyCheck:          projCfg.CustomPolicyCheck,
 		ParallelApplyEnabled:       parallelApplyEnabled,
 		ParallelPlanEnabled:        parallelPlanEnabled,
 		ParallelPolicyCheckEnabled: parallelPlanEnabled,
+		DependsOn:                  projCfg.DependsOn,
 		AutoplanEnabled:            projCfg.AutoplanEnabled,
 		Steps:                      steps,
 		HeadRepo:                   ctx.HeadRepo,
@@ -296,7 +301,8 @@ func newProjectCommandContext(ctx *command.Context,
 		PolicySets:                 policySets,
 		PolicySetTarget:            ctx.PolicySet,
 		ClearPolicyApproval:        ctx.ClearPolicyApproval,
-		PullReqStatus:              pullStatus,
+		PullReqStatus:              pullReqStatus,
+		PullStatus:                 pullStatus,
 		JobID:                      uuid.New().String(),
 		ExecutionOrderGroup:        projCfg.ExecutionOrderGroup,
 		AbortOnExcecutionOrderFail: abortOnExcecutionOrderFail,
